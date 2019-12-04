@@ -1,0 +1,92 @@
+---
+title: "Prediction of Exercise Quality"
+author: "Padma"
+date: "12/3/2019"
+output: html_document
+---
+
+
+# Introduction
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity. Based on this data, people regularly try to quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this assignement we try to use the data and try to predict the correctness of the activity people do.
+
+# Load necessary libraries
+```{r loadlibraries, echo=FALSE}
+library(caret)
+library(rattle)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(parallel)
+library(doParallel)
+```
+
+# Read the data from pml-testing.csv and pml-training.csv 
+
+```{r readdata, echo=TRUE}
+setwd("D:\\Training\\Coursera\\Practical Machine Learning")
+training_data_org <- read.csv("pml-training.csv")
+test_data <- read.csv("pml-testing.csv")
+```
+
+# Remove columns from training that have more than 75% NA
+
+```{r removeNA, echo=TRUE}
+na_col <- sapply(training_data_org, function(x) mean(is.na(x))) > 0.75
+training_data_org <- training_data_org[,na_col == FALSE]
+test_data <- test_data[,na_col == FALSE]
+```
+
+# Remove columns A to G as they do are not relevant for this prediction
+
+```{r removeunwantedcolumn, echo=TRUE}
+training_data_org <- training_data_org[,-c(1:7)]
+test_data <- test_data[,-c(1:7)]
+dim(training_data_org)
+```
+
+# Remove columns that have near zero variance
+
+```{r removenzv, echo=TRUE}
+nzv_col <- nearZeroVar(training_data_org)
+training_data_org <- training_data_org[, -nzv_col]
+test_data  <- test_data[, -nzv_col]
+dim(training_data_org)
+```
+
+# Split training data into training data and validation data(75% - training, 25% validation)
+
+```{r createvalidation, echo=TRUE}
+trainingrows <- createDataPartition(training_data_org$classe, p=0.75)[[1]]
+training_data <- training_data_org[trainingrows,]
+validation_data <- training_data_org[-trainingrows,]
+dim(training_data)
+```
+
+# Create model using Decision Tree. Apply the prediction on validation data and check confusion matrix
+
+```{r createmodelDT, echo=TRUE}
+modDecisionTree <- train( classe ~ .,method = "rpart", data=training_data)
+print(modDecisionTree$finalModel)
+fancyRpartPlot(modDecisionTree$finalModel)
+predictDecTree <- predict(modDecisionTree, validation_data)
+confusionMatrix(validation_data$classe, predictDecTree)
+```
+
+# Create model using Random Forest. Apply the prediction on validation data and check confusion matrix
+
+```{r createmodelRF, echo=TRUE}
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+fitControl <- trainControl(method = "cv",number = 5,allowParallel = TRUE)
+modRandomForest <- train( classe ~ .,method = "rf", data=training_data, trControl = fitControl)
+print(modRandomForest$finalModel)
+predictRandForest <- predict(modRandomForest, validation_data)
+confusionMatrix(validation_data$classe, predictRandForest)
+stopCluster(cluster)
+```
+
+# Accuracy of RandomForest model is more than 99% which is way above the accuracy of Decision Tree model. Hence we chose RandomForest model to predict classe of the test set.
+
+```{r prediction, echo=TRUE}
+predict(modRandomForest, test_data)
+```
